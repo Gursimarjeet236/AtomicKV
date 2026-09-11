@@ -1,15 +1,4 @@
-<div align="center">
-  <h1>AtomicKV</h1>
-  <p><b>A high-performance, fully distributed, tiered Key-Value store built from scratch in C++17.</b></p>
-  <p>
-    <img src="https://img.shields.io/badge/language-C%2B%2B17-blue" alt="Language" />
-    <img src="https://img.shields.io/badge/architecture-epoll%20Event%20Loop-success" alt="Architecture" />
-    <img src="https://img.shields.io/badge/platform-Linux%20%7C%20AWS-orange" alt="Platform" />
-    <img src="https://img.shields.io/badge/docker-ready-blue" alt="Docker" />
-  </p>
-</div>
-
----
+# AtomicKV
 
 ## Motivation
 I built AtomicKV to deeply understand the internals of distributed databases like Redis and Cassandra. Reading academic papers wasn't enough, so I wanted to implement the core concepts—like non-blocking I/O, custom B-Trees, and eventual consistency—entirely from scratch. 
