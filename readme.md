@@ -227,7 +227,6 @@ Running on a standard Linux environment, the single-threaded server comfortably 
 
 ### Prerequisites
 * Linux environment (or WSL)
-* `g++` (C++17) and `make`
 
 ### Build
 ```bash
@@ -300,10 +299,10 @@ Once connected, you can immediately start sending database commands.
 
 **Example Interaction:**
 ```text    
-> SET name Satyam
+> SET name Gursimarjeet
 OK
 > GET name
-Satyam
+Gursimarjeet
 > DEL name
 OK
 ```
