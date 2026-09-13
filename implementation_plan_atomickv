@@ -1,0 +1,107 @@
+# Convert AtomicKV from C++ to Java
+
+The entire AtomicKV project (a distributed, fault-tolerant key-value store) needs to be ported from C++ to Java while preserving **all** functionality: epoll-based networking, LRU cache, B-Tree disk persistence, consistent hash ring, gossip protocol, replication, read repair, anti-entropy, and key migration.
+
+## Key Design Decisions
+
+### Networking: `epoll` → Java NIO `Selector`
+The C++ project uses Linux `epoll` for non-blocking I/O. Java's `java.nio.channels.Selector` provides the exact same single-threaded, event-driven model. This is a 1:1 replacement — no functionality is lost.
+
+### B-Tree Disk Persistence: Binary structs → `RandomAccessFile` + `DataInputStream/DataOutputStream`
+C++ uses `reinterpret_cast` to directly write C structs to disk. Java will use `RandomAccessFile` with explicit field-by-field serialization, keeping the same fixed-size node layout for O(log N) disk seeks.
+
+### Concurrency: `std::shared_mutex` → `ReentrantReadWriteLock`
+C++ uses `std::shared_mutex` and `std::atomic`. Java equivalents are `ReentrantReadWriteLock` and `AtomicLong`.
+
+### Project Structure
+The Java project will use a standard Maven-like `src/main/java/atomickv/` package layout, buildable with a simple `javac` command (no Maven/Gradle dependency needed).
+
+## Proposed Changes
+
+### C++ → Java File Mapping
+
+| C++ File | Java File | Description |
+|---|---|---|
+| `include/bloom_filter.h` + `src/bloom_filter.cpp` | `src/main/java/atomickv/BloomFilter.java` | Probabilistic filter |
+| `include/btree.h` + `src/btree.cpp` | `src/main/java/atomickv/BTree.java` | Disk-persisted B-Tree |
+| `include/kv_store.h` + `src/kv_store.cpp` | `src/main/java/atomickv/KVStore.java` | LRU cache + tiered storage |
+| `include/cluster.h` + `src/cluster.cpp` | `src/main/java/atomickv/ConsistentHashRing.java` | Consistent hashing |
+| `include/gossip.h` + `src/gossip.cpp` | `src/main/java/atomickv/GossipManager.java` | Gossip protocol |
+| `src/server.cpp` | `src/main/java/atomickv/AtomicKVServer.java` | Main server + all background workers |
+| `test_btree.cpp` | `src/main/java/atomickv/TestBTree.java` | B-Tree smoke test |
+| `Makefile` | `build.bat` / `build.sh` | Build script |
+| `Dockerfile` | `Dockerfile` | Updated for Java |
+| `benchmark.py` | `benchmark.py` | Unchanged (connects via TCP) |
+| `readme.md` | `README_JAVA.md` | Updated readme for Java version |
+
+---
+
+### [NEW] [BloomFilter.java](file:///c:/Users/Gursimranjeet%20Singh/AtomicKV/src/main/java/atomickv/BloomFilter.java)
+- 3 hash functions: `hashCode()`, FNV-1a, DJB2 — same algorithms as C++
+- `add(key)` and `possiblyContains(key)` with configurable bit array size
+
+### [NEW] [BTree.java](file:///c:/Users/Gursimranjeet%20Singh/AtomicKV/src/main/java/atomickv/BTree.java)
+- Order-3 B-Tree with fixed-size nodes (same MAX_KEYS=3, MAX_KEY_LEN=64)
+- `RandomAccessFile` for both `.idx` and `.dat` files
+- Field-by-field binary serialization to match C++ struct layout
+- Insert, search, soft-delete, collect-all operations
+- Lamport clock version tracking per key
+
+### [NEW] [KVStore.java](file:///c:/Users/Gursimranjeet%20Singh/AtomicKV/src/main/java/atomickv/KVStore.java)
+- `LinkedHashMap` + `LinkedList` for O(1) LRU cache
+- `ReentrantReadWriteLock` for thread safety
+- Tiered storage: RAM (LRU) → Disk (B-Tree)
+- Bloom filter integration for cache-miss optimization
+- `AtomicLong` Lamport clock
+- Lazy TTL expiration on access
+
+### [NEW] [ConsistentHashRing.java](file:///c:/Users/Gursimranjeet%20Singh/AtomicKV/src/main/java/atomickv/ConsistentHashRing.java)
+- `TreeMap<Long, ClusterNode>` for O(log N) ring lookups
+- Virtual nodes (default 100 per physical node)
+- `ReentrantReadWriteLock` for concurrent access
+- `AtomicLong` ring version for migration detection
+
+### [NEW] [GossipManager.java](file:///c:/Users/Gursimranjeet%20Singh/AtomicKV/src/main/java/atomickv/GossipManager.java)
+- `ConcurrentHashMap` for cluster state
+- Heartbeat tracking, dead node detection (10s timeout)
+- Thread-safe operations
+
+### [NEW] [AtomicKVServer.java](file:///c:/Users/Gursimranjeet%20Singh/AtomicKV/src/main/java/atomickv/AtomicKVServer.java)
+- Java NIO `Selector` + `ServerSocketChannel` (replaces `epoll`)
+- Non-blocking socket I/O with `ByteBuffer`
+- All background daemon threads preserved:
+  - Replication worker (with `LinkedBlockingQueue`)
+  - Gossip worker (random peer selection)
+  - Migration worker (ring version monitoring)
+  - Read repair worker
+  - Anti-entropy worker (30-second scan)
+- Full protocol parsing: SET, GET, DEL, INTERNAL_SET, INTERNAL_GET, INTERNAL_DEL, MIGRATE, GOSSIP, GOSSIP_ACK
+- Proxy redirect for consistent hashing
+
+### [NEW] [TestBTree.java](file:///c:/Users/Gursimranjeet%20Singh/AtomicKV/src/main/java/atomickv/TestBTree.java)
+- Same smoke test as `test_btree.cpp`
+
+### [NEW] [build.bat](file:///c:/Users/Gursimranjeet%20Singh/AtomicKV/build.bat)
+- Windows build script: `javac` compile + run instructions
+
+### [NEW] [build.sh](file:///c:/Users/Gursimranjeet%20Singh/AtomicKV/build.sh)
+- Linux build script for Docker/EC2 deployment
+
+### [NEW] [Dockerfile.java](file:///c:/Users/Gursimranjeet%20Singh/AtomicKV/Dockerfile.java)
+- Updated Dockerfile using `eclipse-temurin:21-jdk` base image
+
+### [NEW] [README_JAVA.md](file:///c:/Users/Gursimranjeet%20Singh/AtomicKV/README_JAVA.md)
+- Updated usage/build instructions for the Java version
+
+> [!IMPORTANT]
+> The existing C++ files will **NOT** be modified or deleted. The Java version is created alongside them.
+
+## Verification Plan
+
+### Compilation
+- Compile all Java files with `javac` and verify zero errors
+
+### Manual Verification
+- Run `TestBTree` to verify B-Tree disk persistence
+- Start a single node and test SET/GET/DEL via `nc` or `telnet`
+- The existing `benchmark.py` script works unchanged since it connects via raw TCP
